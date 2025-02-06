@@ -108,7 +108,11 @@ Below we change the default to sum-to-zero ("contr.sum") before fitting the mode
 options(contrasts = c("contr.sum", "contr.poly"))
 
 # Model fitting
-rcbd_mod 
+rcbd_mod <- lm(yield_kgha ~ rep + nrate_kgha*krate_kgha,
+               data = rcbd_dfw
+               )
+
+rcbd_dfw
 
 # Summary
 summary(rcbd_mod)
@@ -130,6 +134,8 @@ The `Anova()` function allows us to use **type 3 sum of squares**.
 The common functions `aov()` and `anova()` use type 1 SS, which is the wrong choice IF have unbalanced data.
 
 If data is balanced, type 1 and 3 give same results.  
+Balanced data-no missing data
+unbalanced data- some data is missing
 
 For sake of peace of mind, it is simpler to just always use type 3.  
 
@@ -138,11 +144,15 @@ Anova(rcbd_mod, type=3)
 ```
 Notice how rep (i.e., block in this case) has a significant effect.  
 
+if interaction are significant then only proceed ahead and display the data
+
 This means that we **did well by blocking**, as it was able to absorb some of the overall variability and remove it from the error. Remember how **decreasing error SS** was one way to improve the model statistical power.  
 
 Since the interaction is significant here, we should extract means and perform pairwise comparisons for the interaction term.
 
 Before we do that, let's check our model assumptions. Remember, a model is only valid for inference (i.e., means and pwc) IF if fulfills the linear model assumptions.  
+
+residuals: model assumption are based on this
 
 # g) Linear model assumptions  
 ## Extracting residuals
@@ -150,7 +160,7 @@ First, let's extract our model residuals, and also create studentized residuals.
 
 ```{r rcbd_resid}
 rcbd_resid <- augment(rcbd_mod) %>%
-  mutate(.studresid=rstudent(rcbd_mod))
+  mutate(.studresid=rstudent(rcbd_mod)) #rstudent helps to look for outliers
 
 rcbd_resid
 ```
@@ -175,7 +185,7 @@ ggplot(rcbd_resid, aes(x=.fitted, y=.studresid))+
              fill = "purple", 
              size = 3,
              alpha = .7)+
-  #geom_smooth()+
+  geom_smooth()+
   geom_hline(yintercept = c(-3,3), color = "red")+
   theme_bw()
 ```
@@ -273,7 +283,7 @@ Remember that it is at this level that we establish the hierarchy of how our pai
 
 Let's extract it by comparing everything to everything else.
 ```{r interaction means all}
-rcbd_means_all 
+rcbd_means_all <- emmeans(rcbd_mod, ~krate_kgha:nrate_kgha)
 
 rcbd_means_all
 ```
@@ -287,13 +297,17 @@ rcbd_cld_all <- cld(rcbd_means_all,
                    adjust="none",
                Letters=letters)
 
+library(multcompView)
 rcbd_cld_all
 ```
 
 Let's do some light wrangling here to be able to plot these.  
 
 ```{r selected pwc}
-rcbd_cld_selected <- rcbd_cld_all 
+rcbd_cld_selected <- rcbd_cld_all %>%
+  as.data.frame() %>%
+  mutate(letter = trimws(.group)) %>%
+  mutate(trtname = paste0(nrate_kgha, "+", krate_kgha))
 
 rcbd_cld_selected
 ```
@@ -303,7 +317,36 @@ Let's plot our results, including both **raw data** (for allowing our audience t
 Let's make this plot publication ready.  
 
 ```{r rcbd final plot}
+ggplot() +
+  geom_boxplot(data = rcbd_dfw,
+               aes(x = trtname, y = yield_kgha,
+               fill = trtname
+               )) +
+  geom_jitter(data = rcbd_dfw,
+              aes(x = trtname, y = yield_kgha,
+                  color = trtname
+                  ),
+              aplha = .6
+              ) +
+    geom_label(data = rcbd_cld_selected,
+              aes(x = trtname, 
+                  y = emmean,
+                  label = letter
+                  ),
+              size = 3,
+              label.padding = unit(.1, "lines")
+              ) +
+  labs(x = "N rate + K rate (kg/ha)",
+        y = "Yeild (kg/ha)"
+)+
+  scale_fill_viridis_d()+
+  scale_colour_viridis_d()+
+  theme(legend.position = "none")
 
+ggsave("../output/rcbd_means.png",
+       height = 4,
+       width = 6
+       )
 ```
 
 
